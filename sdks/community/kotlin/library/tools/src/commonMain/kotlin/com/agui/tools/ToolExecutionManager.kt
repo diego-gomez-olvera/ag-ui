@@ -4,6 +4,7 @@ import com.agui.core.types.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.datetime.Clock
+import kotlinx.serialization.json.JsonPrimitive
 import co.touchlab.kermit.Logger
 
 private val logger = Logger.withTag("ToolExecutionManager")
@@ -130,11 +131,13 @@ class ToolExecutionManager(
                 "Tool execution ${if (result.success) "succeeded" else "failed"}: $toolName (ID: $toolCallId)" 
             }
             
-            // Create tool message response
+            // Create tool message response; a failed result also sets the protocol's error field
+            val content = formatToolResponse(result)
             val toolMessage = ToolMessage(
                 id = generateMessageId(),
-                content = formatToolResponse(result),
-                toolCallId = toolCallId
+                content = content,
+                toolCallId = toolCallId,
+                error = if (result.success) null else result.message ?: content
             )
             
             // Send response back to agent
@@ -169,7 +172,8 @@ class ToolExecutionManager(
             val errorMessage = ToolMessage(
                 id = generateMessageId(),
                 content = "Error: Tool execution failed - ${e.message}",
-                toolCallId = toolCallId
+                toolCallId = toolCallId,
+                error = e.message ?: e::class.simpleName ?: "Tool execution failed"
             )
             
             responseHandler.sendToolResponse(errorMessage, threadId, runId)
@@ -182,9 +186,12 @@ class ToolExecutionManager(
     
     /**
      * Formats a tool execution result into a response message.
+     * A JSON string result is sent as its text; other JSON results are sent encoded.
      */
     private fun formatToolResponse(result: ToolExecutionResult): String {
-        result.result?.toString()?.takeIf { it.isNotEmpty() }?.let { return it }
+        val value = result.result
+        val text = if (value is JsonPrimitive && value.isString) value.content else value?.toString()
+        text?.takeIf { it.isNotEmpty() }?.let { return it }
         result.message?.takeIf { it.isNotEmpty() }?.let { return it }
         return if (result.success) "true" else "false"
     }

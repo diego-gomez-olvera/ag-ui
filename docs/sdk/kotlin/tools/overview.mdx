@@ -189,6 +189,11 @@ override suspend fun execute(context: ToolExecutionContext): ToolExecutionResult
 }
 ```
 
+The agent receives the outcome as a `ToolMessage`. When a tool returns `ToolExecutionResult.failure` or
+throws, the message's `error` field carries the failure message, so the agent can tell a failure from an
+answer. A successful result that is a JSON string is sent as plain text; other JSON values are sent
+encoded.
+
 ## Statistics and Monitoring
 
 ### Execution Statistics
