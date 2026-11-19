@@ -5,7 +5,7 @@ import com.agui.core.types.*
 import com.agui.tools.*
 import com.agui.client.tools.ClientToolResponseHandler
 import kotlinx.coroutines.flow.*
-import kotlinx.datetime.Clock
+import kotlin.uuid.Uuid
 import kotlinx.serialization.json.*
 import co.touchlab.kermit.Logger
 
@@ -143,14 +143,14 @@ open class AgUiAgent(
      *
      * @return A unique thread ID
      */
-    protected fun generateThreadId(): String = "thread_${Clock.System.now().toEpochMilliseconds()}"
+    protected fun generateThreadId(): String = "thread_${Uuid.random()}"
 
     /**
      * Generate a unique run ID based on current timestamp
      *
      * @return A unique run ID
      */
-    protected fun generateRunId(): String = "run_${Clock.System.now().toEpochMilliseconds()}"
+    protected fun generateRunId(): String = "run_${Uuid.random()}"
 
     /**
      * Generate a unique ID with the given prefix
@@ -158,7 +158,7 @@ open class AgUiAgent(
      * @param prefix The prefix for the generated ID
      * @return A unique ID with the specified prefix
      */
-    protected fun generateId(prefix: String): String = "${prefix}_${Clock.System.now().toEpochMilliseconds()}"
+    protected fun generateId(prefix: String): String = "${prefix}_${Uuid.random()}"
 }
 
 /**
