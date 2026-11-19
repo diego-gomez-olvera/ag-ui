@@ -183,7 +183,7 @@ open class AgUiAgentConfig {
     /** System prompt to prepend to conversations */
     var systemPrompt: String? = null
     
-    /** Enable debug mode for verbose logging */
+    /** Enable debug mode for verbose logging, including raw event payloads (off by default) */
     var debug: Boolean = false
     
     /** Tool registry for agent tools */

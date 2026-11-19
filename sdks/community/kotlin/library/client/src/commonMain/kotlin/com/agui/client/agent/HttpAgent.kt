@@ -55,12 +55,13 @@ class HttpAgent(
                     setBody(input)
                 }
             ) {
-                // Convert SSE events to string flow
+                // Convert SSE events to string flow. Payloads carry user content and tool
+                // results, so they are only logged in debug mode.
                 val stringFlow = incoming.mapNotNull { sseEvent ->
-                    logger.d { "Raw SSE event: ${sseEvent}" }
-                    sseEvent.data?.also { data ->
-                        logger.d { "SSE data: $data" }
+                    if (config.debug) {
+                        logger.d { "Raw SSE event: ${sseEvent}" }
                     }
+                    sseEvent.data
                 }
 
                 // Parse SSE stream

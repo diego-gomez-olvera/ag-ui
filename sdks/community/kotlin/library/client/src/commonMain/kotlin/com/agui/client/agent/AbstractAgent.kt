@@ -259,16 +259,19 @@ abstract class AbstractAgent(
             agentState.messages?.let {
                 messages = it
                 messagesChanged = true
-                val preview = it.joinToString(" | ") { msg ->
-                    when (msg) {
-                        is AssistantMessage -> "A:${msg.id}:${msg.content?.take(40)}"
-                        is UserMessage -> "U:${msg.id}:${msg.content.take(40)}"
-                        is SystemMessage -> "S:${msg.id}:${msg.content ?: ""}"
-                        is ToolMessage -> "T:${msg.id}:${msg.content.take(40)}"
-                        else -> "${msg::class.simpleName}:${msg.id}"
+                // Message content is user data: only previewed in debug mode
+                if (debug) {
+                    val preview = it.joinToString(" | ") { msg ->
+                        when (msg) {
+                            is AssistantMessage -> "A:${msg.id}:${msg.content?.take(40)}"
+                            is UserMessage -> "U:${msg.id}:${msg.content.take(40)}"
+                            is SystemMessage -> "S:${msg.id}:${msg.content ?: ""}"
+                            is ToolMessage -> "T:${msg.id}:${msg.content.take(40)}"
+                            else -> "${msg::class.simpleName}:${msg.id}"
+                        }
                     }
+                    logger.d { "Updated messages(${it.size}): $preview" }
                 }
-                logger.d { "Updated messages(${it.size}): $preview" }
             }
             agentState.state?.let {
                 state = it
@@ -515,7 +518,7 @@ abstract class AbstractAgent(
  * @property threadId Optional thread identifier for conversation continuity
  * @property initialMessages List of messages to start the agent with
  * @property initialState Initial state object for the agent
- * @property debug Whether to enable debug logging
+ * @property debug Whether to enable debug logging, including raw event payloads (user content, tool results)
  */
 open class AgentConfig(
     open val agentId: String? = null,
