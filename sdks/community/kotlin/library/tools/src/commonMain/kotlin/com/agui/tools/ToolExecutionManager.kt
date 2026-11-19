@@ -23,7 +23,7 @@ class ToolExecutionManager(
     private val responseHandler: ToolResponseHandler
 ) {
     
-    private val activeExecutions = mutableMapOf<String, Job>()
+    private val activeExecutions = AtomicMap<String, Job>()
     private val _executionEvents = MutableSharedFlow<ToolExecutionEvent>()
     
     /**
@@ -79,14 +79,14 @@ class ToolExecutionManager(
                             val job = launch {
                                 executeToolCall(builder.build(), threadId, runId)
                             }
-                            activeExecutions[event.toolCallId] = job
+                            activeExecutions.update { it + (event.toolCallId to job) }
                         }
                     }
                     
                     is RunFinishedEvent, is RunErrorEvent -> {
                         // Wait for all active tool executions to complete
-                        activeExecutions.values.forEach { it.join() }
-                        activeExecutions.clear()
+                        activeExecutions.value.values.forEach { it.join() }
+                        activeExecutions.update { emptyMap() }
                     }
                     
                     else -> {
@@ -176,7 +176,7 @@ class ToolExecutionManager(
             _executionEvents.emit(ToolExecutionEvent.Failed(toolCallId, toolName, e.message ?: "Unknown error"))
             
         } finally {
-            activeExecutions.remove(toolCallId)
+            activeExecutions.update { it - toolCallId }
         }
     }
     
@@ -193,20 +193,21 @@ class ToolExecutionManager(
      * Cancels all active tool executions.
      */
     fun cancelAllExecutions() {
-        logger.i { "Cancelling ${activeExecutions.size} active tool executions" }
-        activeExecutions.values.forEach { it.cancel() }
-        activeExecutions.clear()
+        val cancelled = activeExecutions.value
+        logger.i { "Cancelling ${cancelled.size} active tool executions" }
+        cancelled.values.forEach { it.cancel() }
+        activeExecutions.update { it - cancelled.keys }
     }
     
     /**
      * Gets the number of currently active tool executions.
      */
-    fun getActiveExecutionCount(): Int = activeExecutions.size
+    fun getActiveExecutionCount(): Int = activeExecutions.value.size
     
     /**
      * Checks if a specific tool call is still executing.
      */
-    fun isExecuting(toolCallId: String): Boolean = activeExecutions.containsKey(toolCallId)
+    fun isExecuting(toolCallId: String): Boolean = activeExecutions.value.containsKey(toolCallId)
     
     private fun generateMessageId(): String = "msg_${Clock.System.now().toEpochMilliseconds()}"
 }
