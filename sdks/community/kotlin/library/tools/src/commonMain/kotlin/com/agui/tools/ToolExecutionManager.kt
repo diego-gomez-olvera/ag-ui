@@ -163,6 +163,9 @@ class ToolExecutionManager(
             }
             _executionEvents.emit(ToolExecutionEvent.Failed(toolCallId, toolName, "Tool not found (server-handled)"))
 
+        } catch (e: CancellationException) {
+            // The run was cancelled: do not report the tool as failed to the agent
+            throw e
         } catch (e: Exception) {
             logger.e(e) { "Tool execution failed: $toolName (ID: $toolCallId)" }
             

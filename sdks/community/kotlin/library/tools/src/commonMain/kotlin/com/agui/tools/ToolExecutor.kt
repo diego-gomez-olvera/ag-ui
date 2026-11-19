@@ -1,5 +1,7 @@
 package com.agui.tools
 
+import kotlinx.coroutines.CancellationException
+
 import com.agui.core.types.Tool
 import com.agui.core.types.ToolCall
 import kotlinx.serialization.json.JsonElement
@@ -162,6 +164,9 @@ abstract class AbstractToolExecutor(
             executeInternal(context)
         } catch (e: ToolExecutionException) {
             // Re-throw tool execution exceptions
+            throw e
+        } catch (e: CancellationException) {
+            // Cancellation is not a tool failure
             throw e
         } catch (e: Exception) {
             // Wrap other exceptions
