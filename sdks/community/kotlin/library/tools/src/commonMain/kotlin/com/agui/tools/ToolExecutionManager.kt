@@ -37,12 +37,14 @@ class ToolExecutionManager(
      * @param events The event stream to process
      * @param threadId The thread ID for context
      * @param runId The run ID for context
+     * @param responseHandler Receives the tool responses of this stream (defaults to the manager's handler)
      * @return The processed event stream with tool responses injected
      */
     fun processEventStream(
         events: Flow<BaseEvent>,
         threadId: String?,
-        runId: String?
+        runId: String?,
+        responseHandler: ToolResponseHandler = this.responseHandler
     ): Flow<BaseEvent> = flow {
         coroutineScope {
             val toolCallBuffer = mutableMapOf<String, ToolCallBuilder>()
@@ -77,7 +79,7 @@ class ToolExecutionManager(
                             // Execute the tool call in this coroutine scope
                             // This ensures it's tied to the flow's lifecycle
                             val job = launch {
-                                executeToolCall(builder.build(), threadId, runId)
+                                executeToolCall(builder.build(), threadId, runId, responseHandler)
                             }
                             activeExecutions[event.toolCallId] = job
                         }
@@ -103,7 +105,8 @@ class ToolExecutionManager(
     private suspend fun executeToolCall(
         toolCall: ToolCall,
         threadId: String?,
-        runId: String?
+        runId: String?,
+        responseHandler: ToolResponseHandler
     ) {
         val toolCallId = toolCall.id
         val toolName = toolCall.function.name

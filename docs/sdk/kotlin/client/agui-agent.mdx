@@ -167,6 +167,28 @@ class MyRepository {
     }
 }
 
+## Client-Side Tools
+When the agent has a tool registry (for example through `agentWithTools`), tool calls run on the client.
+After a run that produced tool results, the agent:
+
+1. Emits a `ToolCallResultEvent` for each result.
+2. Starts a follow-up run on the same thread with the whole conversation: the input messages, the
+   assistant messages of the run (with their tool calls) and the tool messages.
+3. Emits the follow-up run's events in the same flow returned by `sendMessage`.
+
+This repeats until a run makes no tool calls, a run fails with `RunErrorEvent`, or
+`maxToolFollowUpRuns` follow-up runs (default 10) have been started:
+
+```kotlin
+val agent = agentWithTools(url, toolRegistry) {
+    bearerToken = "your-token"
+    maxToolFollowUpRuns = 5
+}
+```
+
+`StatefulAgUiAgent` records the whole round trip in its history. `ClientToolResponseHandler` is
+deprecated: the agents send tool results themselves.
+
 ## Error Handling
 
 ### Connection Errors

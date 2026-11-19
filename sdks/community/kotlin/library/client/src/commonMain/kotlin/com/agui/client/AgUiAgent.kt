@@ -3,7 +3,8 @@ package com.agui.client
 import com.agui.client.agent.*
 import com.agui.core.types.*
 import com.agui.tools.*
-import com.agui.client.tools.ClientToolResponseHandler
+import com.agui.client.state.defaultApplyEvents
+import com.agui.client.tools.ToolResultCollector
 import kotlinx.coroutines.flow.*
 import kotlinx.datetime.Clock
 import kotlinx.serialization.json.*
@@ -40,7 +41,7 @@ open class AgUiAgent(
     )
 
     protected val toolExecutionManager = config.toolRegistry?.let {
-        ToolExecutionManager(it, ClientToolResponseHandler(agent))
+        ToolExecutionManager(it, LoggingToolResponseHandler())
     }
 
     /**
@@ -49,23 +50,55 @@ open class AgUiAgent(
     /**
      * Run agent with explicit input and return observable event stream
      *
+     * When a tool registry is configured, client-side tool calls run on this device. After a run
+     * that produced tool results, the agent emits a [ToolCallResultEvent] per result and starts a
+     * follow-up run with the whole conversation (the input messages, the assistant messages of the
+     * run including its tool calls, and the tool messages), whose events are part of the same flow.
+     * This repeats up to [AgUiAgentConfig.maxToolFollowUpRuns] times.
+     *
      * @param input The run agent input containing messages, tools, state, and other configuration
-     * @return Flow of events from the agent, potentially processed through tool execution
+     * @return Flow of events from the agent and its follow-up runs
      */
     open fun run(input: RunAgentInput): Flow<BaseEvent> {
-        // Get the raw event stream from the agent
-        val eventStream = agent.runAgentObservable(input)
-        
-        // If we have a tool execution manager, process events through it
-        return if (toolExecutionManager != null) {
-            toolExecutionManager.processEventStream(
-                events = eventStream,
-                threadId = input.threadId,
-                runId = input.runId
-            )
-        } else {
-            // No tools configured, just pass through the events
-            eventStream
+        val manager = toolExecutionManager ?: return agent.runAgentObservable(input)
+        return flow {
+            var runInput = input
+            var followUpRuns = 0
+            while (true) {
+                val toolResults = ToolResultCollector()
+                val runEvents = mutableListOf<BaseEvent>()
+                manager.processEventStream(
+                    events = agent.runAgentObservable(runInput),
+                    threadId = runInput.threadId,
+                    runId = runInput.runId,
+                    responseHandler = toolResults
+                ).collect { event ->
+                    runEvents += event
+                    emit(event)
+                }
+
+                val toolMessages = toolResults.messages()
+                if (toolMessages.isEmpty() || runEvents.any { it is RunErrorEvent }) break
+                toolMessages.forEach { message ->
+                    emit(
+                        ToolCallResultEvent(
+                            messageId = message.id,
+                            toolCallId = message.toolCallId,
+                            content = message.content,
+                            role = "tool"
+                        )
+                    )
+                }
+                if (followUpRuns >= config.maxToolFollowUpRuns) {
+                    logger.w { "Not starting another follow-up run after ${config.maxToolFollowUpRuns}" }
+                    break
+                }
+                followUpRuns++
+                val conversation = defaultApplyEvents(runInput, runEvents.asFlow())
+                    .mapNotNull { it.messages }
+                    .lastOrNull() ?: runInput.messages
+                runInput = runInput.copy(runId = generateRunId(), messages = conversation + toolMessages)
+            }
         }
     }
 
@@ -203,6 +236,12 @@ open class AgUiAgentConfig {
     
     /** Connection timeout in milliseconds (defaults to 30 seconds) */
     var connectTimeout: Long = 30_000L
+
+    /**
+     * Maximum number of follow-up runs that send client-side tool results back to the agent for one
+     * message (defaults to 10). Guards against an agent that keeps calling tools.
+     */
+    var maxToolFollowUpRuns: Int = 10
 
     /**
      * Build the complete headers map including authentication headers
