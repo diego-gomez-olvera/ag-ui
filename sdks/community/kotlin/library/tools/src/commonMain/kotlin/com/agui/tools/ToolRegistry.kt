@@ -130,20 +130,18 @@ class ToolNotFoundException(
  */
 class DefaultToolRegistry : ToolRegistry {
     
-    private val executors = mutableMapOf<String, ToolExecutor>()
-    private val stats = mutableMapOf<String, MutableToolExecutionStats>()
-    private val lock = kotlinx.coroutines.sync.Mutex()
+    private val executors = AtomicMap<String, ToolExecutor>()
+    private val stats = AtomicMap<String, ToolExecutionStats>()
     
     override fun registerTool(executor: ToolExecutor) {
         val toolName = executor.tool.name
         logger.i { "Registering tool: $toolName" }
         
-        if (executors.containsKey(toolName)) {
-            throw IllegalArgumentException("Tool '$toolName' is already registered")
+        executors.update { current ->
+            require(toolName !in current) { "Tool '$toolName' is already registered" }
+            current + (toolName to executor)
         }
-        
-        executors[toolName] = executor
-        stats[toolName] = MutableToolExecutionStats()
+        stats.update { it + (toolName to ToolExecutionStats()) }
         
         logger.i { "Successfully registered tool: $toolName" }
     }
@@ -151,8 +149,12 @@ class DefaultToolRegistry : ToolRegistry {
     override fun unregisterTool(toolName: String): Boolean {
         logger.i { "Unregistering tool: $toolName" }
         
-        val wasPresent = executors.remove(toolName) != null
-        stats.remove(toolName)
+        var wasPresent = false
+        executors.update { current ->
+            wasPresent = toolName in current
+            current - toolName
+        }
+        stats.update { it - toolName }
         
         if (wasPresent) {
             logger.i { "Successfully unregistered tool: $toolName" }
@@ -168,15 +170,15 @@ class DefaultToolRegistry : ToolRegistry {
     }
     
     override fun getAllTools(): List<Tool> {
-        return executors.values.map { it.tool }
+        return executors.value.values.map { it.tool }
     }
     
     override fun getAllExecutors(): Map<String, ToolExecutor> {
-        return executors.toMap()
+        return executors.value
     }
     
     override fun isToolRegistered(toolName: String): Boolean {
-        return executors.containsKey(toolName)
+        return toolName in executors.value
     }
     
     override suspend fun executeTool(context: ToolExecutionContext): ToolExecutionResult {
@@ -202,19 +204,7 @@ class DefaultToolRegistry : ToolRegistry {
             val executionTime = endTime - startTime
             
             // Update statistics
-            lock.tryLock() // Non-blocking stats update
-            stats[toolName]?.let { toolStats ->
-                toolStats.executionCount++
-                toolStats.totalExecutionTimeMs += executionTime
-                toolStats.averageExecutionTimeMs = toolStats.totalExecutionTimeMs.toDouble() / toolStats.executionCount
-                
-                if (result.success) {
-                    toolStats.successCount++
-                } else {
-                    toolStats.failureCount++
-                }
-            }
-            lock.unlock()
+            recordExecution(toolName, executionTime, success = result.success)
             
             logger.i { 
                 "Tool execution completed: $toolName (${if (result.success) "SUCCESS" else "FAILURE"}) in ${executionTime}ms" 
@@ -225,14 +215,7 @@ class DefaultToolRegistry : ToolRegistry {
             val executionTime = endTime - startTime
             
             // Update failure statistics
-            lock.tryLock()
-            stats[toolName]?.let { toolStats ->
-                toolStats.executionCount++
-                toolStats.failureCount++
-                toolStats.totalExecutionTimeMs += executionTime
-                toolStats.averageExecutionTimeMs = toolStats.totalExecutionTimeMs.toDouble() / toolStats.executionCount
-            }
-            lock.unlock()
+            recordExecution(toolName, executionTime, success = false)
             
             logger.e(e) { "Tool execution failed: $toolName in ${executionTime}ms" }
             
@@ -251,44 +234,30 @@ class DefaultToolRegistry : ToolRegistry {
     }
     
     override fun getToolStats(toolName: String): ToolExecutionStats? {
-        return stats[toolName]?.toImmutable()
+        return stats[toolName]
     }
     
     override fun getAllStats(): Map<String, ToolExecutionStats> {
-        return stats.mapValues { it.value.toImmutable() }
+        return stats.value
     }
     
     override fun clearStats() {
         logger.i { "Clearing all tool execution statistics" }
-        stats.values.forEach { it.clear() }
+        stats.update { current -> current.mapValues { ToolExecutionStats() } }
     }
-    
-    /**
-     * Mutable version of ToolExecutionStats for internal tracking.
-     */
-    private class MutableToolExecutionStats {
-        var executionCount: Long = 0
-        var successCount: Long = 0
-        var failureCount: Long = 0
-        var totalExecutionTimeMs: Long = 0
-        var averageExecutionTimeMs: Double = 0.0
-        
-        fun toImmutable(): ToolExecutionStats {
-            return ToolExecutionStats(
-                executionCount = executionCount,
-                successCount = successCount,
-                failureCount = failureCount,
-                totalExecutionTimeMs = totalExecutionTimeMs,
-                averageExecutionTimeMs = averageExecutionTimeMs
-            )
-        }
-        
-        fun clear() {
-            executionCount = 0
-            successCount = 0
-            failureCount = 0
-            totalExecutionTimeMs = 0
-            averageExecutionTimeMs = 0.0
+
+    private fun recordExecution(toolName: String, executionTimeMs: Long, success: Boolean) {
+        stats.update { current ->
+            val previous = current[toolName] ?: return@update current
+            val count = previous.executionCount + 1
+            val total = previous.totalExecutionTimeMs + executionTimeMs
+            current + (toolName to previous.copy(
+                executionCount = count,
+                successCount = previous.successCount + if (success) 1 else 0,
+                failureCount = previous.failureCount + if (success) 0 else 1,
+                totalExecutionTimeMs = total,
+                averageExecutionTimeMs = total.toDouble() / count
+            ))
         }
     }
 }

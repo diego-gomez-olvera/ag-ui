@@ -23,7 +23,7 @@ class ToolExecutionManager(
     private val responseHandler: ToolResponseHandler
 ) {
     
-    private val activeExecutions = mutableMapOf<String, Job>()
+    private val activeExecutions = AtomicMap<String, Job>()
     private val _executionEvents = MutableSharedFlow<ToolExecutionEvent>()
     
     /**
@@ -46,6 +46,9 @@ class ToolExecutionManager(
     ): Flow<BaseEvent> = flow {
         coroutineScope {
             val toolCallBuffer = mutableMapOf<String, ToolCallBuilder>()
+            // Tool calls started by this stream. A run waits only for its own tool calls, so a tool
+            // response handler can start a follow-up run through this same manager.
+            val streamExecutions = mutableListOf<Job>()
             
             events.collect { event ->
                 // Emit the original event
@@ -75,18 +78,21 @@ class ToolExecutionManager(
                             logger.i { "Tool call ended: ${builder.name} (${event.toolCallId})" }
                             
                             // Execute the tool call in this coroutine scope
-                            // This ensures it's tied to the flow's lifecycle
-                            val job = launch {
+                            // This ensures it's tied to the flow's lifecycle. The job is
+                            // registered before it starts so its own cleanup always finds it.
+                            val job = launch(start = CoroutineStart.LAZY) {
                                 executeToolCall(builder.build(), threadId, runId)
                             }
-                            activeExecutions[event.toolCallId] = job
+                            activeExecutions.update { it + (event.toolCallId to job) }
+                            streamExecutions += job
+                            job.start()
                         }
                     }
                     
                     is RunFinishedEvent, is RunErrorEvent -> {
-                        // Wait for all active tool executions to complete
-                        activeExecutions.values.forEach { it.join() }
-                        activeExecutions.clear()
+                        // Wait for the tool executions this run started
+                        streamExecutions.joinAll()
+                        streamExecutions.clear()
                     }
                     
                     else -> {
@@ -176,7 +182,7 @@ class ToolExecutionManager(
             _executionEvents.emit(ToolExecutionEvent.Failed(toolCallId, toolName, e.message ?: "Unknown error"))
             
         } finally {
-            activeExecutions.remove(toolCallId)
+            activeExecutions.update { it - toolCallId }
         }
     }
     
@@ -193,20 +199,21 @@ class ToolExecutionManager(
      * Cancels all active tool executions.
      */
     fun cancelAllExecutions() {
-        logger.i { "Cancelling ${activeExecutions.size} active tool executions" }
-        activeExecutions.values.forEach { it.cancel() }
-        activeExecutions.clear()
+        val cancelled = activeExecutions.value
+        logger.i { "Cancelling ${cancelled.size} active tool executions" }
+        cancelled.values.forEach { it.cancel() }
+        activeExecutions.update { it - cancelled.keys }
     }
     
     /**
      * Gets the number of currently active tool executions.
      */
-    fun getActiveExecutionCount(): Int = activeExecutions.size
+    fun getActiveExecutionCount(): Int = activeExecutions.value.size
     
     /**
      * Checks if a specific tool call is still executing.
      */
-    fun isExecuting(toolCallId: String): Boolean = activeExecutions.containsKey(toolCallId)
+    fun isExecuting(toolCallId: String): Boolean = activeExecutions.value.containsKey(toolCallId)
     
     private fun generateMessageId(): String = "msg_${Clock.System.now().toEpochMilliseconds()}"
 }
