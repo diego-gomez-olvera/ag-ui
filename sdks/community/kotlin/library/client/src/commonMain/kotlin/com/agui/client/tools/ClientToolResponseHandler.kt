@@ -15,6 +15,11 @@ private val logger = Logger.withTag("ClientToolResponseHandler")
  *
  * @param httpAgent The HTTP agent to send tool responses through
  */
+@Deprecated(
+    message = "Sends the tool message without the conversation and drops the follow-up run's events. " +
+        "AgUiAgent and StatefulAgUiAgent now send tool results in follow-up runs themselves.",
+    level = DeprecationLevel.WARNING
+)
 class ClientToolResponseHandler(
     private val httpAgent: HttpAgent
 ) : ToolResponseHandler {

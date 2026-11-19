@@ -50,7 +50,8 @@ Tools execute on the client device, not on the agent's server:
 2. **Discovery**: Agent receives tool definitions during conversation
 3. **Request**: Agent requests tool execution via ToolCall events
 4. **Execution**: Client executes tool and returns result
-5. **Response**: Agent receives tool result and continues conversation
+5. **Response**: The client sends the result to the agent in a follow-up run with the conversation, and
+   the agent continues ([details](/docs/sdk/kotlin/client/agui-agent#client-side-tools))
 
 ## Quick Start
 

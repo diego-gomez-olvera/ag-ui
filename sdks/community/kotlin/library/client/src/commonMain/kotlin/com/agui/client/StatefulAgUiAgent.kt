@@ -28,6 +28,7 @@ open class StatefulAgUiAgent(
     forwardedProps = statefulConfig.forwardedProps
     requestTimeout = statefulConfig.requestTimeout
     connectTimeout = statefulConfig.connectTimeout
+    maxToolFollowUpRuns = statefulConfig.maxToolFollowUpRuns
 }) {
 
     private val statefulConfig = StatefulAgUiAgentConfig().apply(configure)
