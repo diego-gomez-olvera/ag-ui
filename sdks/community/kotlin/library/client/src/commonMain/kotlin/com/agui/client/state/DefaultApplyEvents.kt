@@ -488,12 +488,19 @@ fun defaultApplyEvents(
                             is DeveloperMessage -> updated.content
                             else -> ""
                         }
-                        "Updated message ${event.messageId} content='${preview?.take(80)}'"
+                        if (agent?.debug == true) {
+                            "Updated message ${event.messageId} content='${preview?.take(80)}'"
+                        } else {
+                            "Updated message ${event.messageId} (${preview?.length ?: 0} chars)"
+                        }
                     }
                     emit(AgentState(messages = messages.toList()))
                     emitted = true
                 } else {
-                    logger.e { "Received content for unknown message ${event.messageId}; current ids=${messages.joinToString { it.id }}. Dropping delta: '${event.delta.take(80)}'" }
+                    logger.e {
+                        val dropped = if (agent?.debug == true) ": '${event.delta.take(80)}'" else " (${event.delta.length} chars)"
+                        "Received content for unknown message ${event.messageId}; current ids=${messages.joinToString { it.id }}. Dropping delta$dropped"
+                    }
                 }
             }
 

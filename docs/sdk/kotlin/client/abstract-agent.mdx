@@ -242,7 +242,8 @@ Based on config, sets up:
 - Automatic request/response handling
 
 ### Logging
-Optional request/response logging when `config.debug = true`
+Optional request/response logging when `config.debug = true`. Raw SSE events and message text are
+only logged in debug mode, since they can contain personal data; keep it off in production builds.
 
 ## Common Implementation Patterns
 

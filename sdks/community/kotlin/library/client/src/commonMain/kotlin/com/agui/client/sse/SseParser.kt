@@ -56,7 +56,7 @@ class SseParser(
             logger.d { "Successfully parsed event: ${event.eventType}" }
             event
         } catch (e: Exception) {
-            logger.e(e) { "Failed to parse JSON event: $jsonStr" }
+            logger.e(e) { "Failed to parse JSON event (${jsonStr.length} chars)" }
             if (strictV1) throw e else null
         }
     }
