@@ -13,6 +13,10 @@ import kotlinx.serialization.json.JsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlin.test.assertNull
 
 class ToolExecutionManagerTest {
 
@@ -79,6 +83,59 @@ class ToolExecutionManagerTest {
         ).toList()
 
         assertEquals(0, handler.messages.size)
+    }
+
+    @Test
+    fun failedToolSetsErrorOnToolMessage() = runTest {
+        val handler = runSingleTool { ToolExecutionResult.failure("City not found") }
+
+        val response = handler.messages.single()
+        assertEquals("City not found", response.content)
+        assertEquals("City not found", response.error)
+    }
+
+    @Test
+    fun throwingToolSetsErrorOnToolMessage() = runTest {
+        val handler = runSingleTool { throw ToolExecutionException("Storage unavailable") }
+
+        assertEquals("Storage unavailable", handler.messages.single().error)
+    }
+
+    @Test
+    fun stringResultIsSentUnquoted() = runTest {
+        val handler = runSingleTool { ToolExecutionResult.success(JsonPrimitive("sunny, 21 C")) }
+
+        val response = handler.messages.single()
+        assertEquals("sunny, 21 C", response.content)
+        assertNull(response.error)
+    }
+
+    @Test
+    fun objectResultIsSentAsJson() = runTest {
+        val handler = runSingleTool {
+            ToolExecutionResult.success(buildJsonObject { put("temperature", "21 C") })
+        }
+
+        assertEquals("""{"temperature":"21 C"}""", handler.messages.single().content)
+    }
+
+    private suspend fun runSingleTool(execute: suspend () -> ToolExecutionResult): RecordingResponseHandler {
+        val registry = DefaultToolRegistry()
+        registry.registerTool(object : ToolExecutor {
+            override val tool = Tool(name = "forecast", description = "Forecast", parameters = JsonObject(emptyMap()))
+            override suspend fun execute(context: ToolExecutionContext): ToolExecutionResult = execute()
+        })
+        val handler = RecordingResponseHandler()
+        ToolExecutionManager(registry, handler).processEventStream(
+            events = flowOf(
+                ToolCallStartEvent(toolCallId = "call-t", toolCallName = "forecast"),
+                ToolCallEndEvent(toolCallId = "call-t"),
+                RunFinishedEvent(threadId = "thread-6", runId = "run-6")
+            ),
+            threadId = "thread-6",
+            runId = "run-6"
+        ).toList()
+        return handler
     }
 
     private class RecordingResponseHandler : ToolResponseHandler {
