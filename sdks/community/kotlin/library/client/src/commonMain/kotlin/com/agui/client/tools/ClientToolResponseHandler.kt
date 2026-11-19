@@ -5,7 +5,7 @@ import com.agui.client.agent.RunAgentParameters
 import com.agui.core.types.*
 import com.agui.tools.ToolResponseHandler
 import kotlinx.coroutines.flow.collect
-import kotlinx.datetime.Clock
+import kotlin.uuid.Uuid
 import co.touchlab.kermit.Logger
 
 private val logger = Logger.withTag("ClientToolResponseHandler")
@@ -35,8 +35,8 @@ class ClientToolResponseHandler(
 
         // Create a minimal input with just the tool message
         val input = RunAgentInput(
-            threadId = threadId ?: "tool_thread_${Clock.System.now().toEpochMilliseconds()}",
-            runId = runId ?: "tool_run_${Clock.System.now().toEpochMilliseconds()}",
+            threadId = threadId ?: "tool_thread_${Uuid.random()}",
+            runId = runId ?: "tool_run_${Uuid.random()}",
             messages = listOf(toolMessage)
         )
 

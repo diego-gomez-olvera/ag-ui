@@ -4,6 +4,7 @@ import com.agui.core.types.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.datetime.Clock
+import kotlin.uuid.Uuid
 import co.touchlab.kermit.Logger
 
 private val logger = Logger.withTag("ToolExecutionManager")
@@ -208,7 +209,7 @@ class ToolExecutionManager(
      */
     fun isExecuting(toolCallId: String): Boolean = activeExecutions.containsKey(toolCallId)
     
-    private fun generateMessageId(): String = "msg_${Clock.System.now().toEpochMilliseconds()}"
+    private fun generateMessageId(): String = "msg_${Uuid.random()}"
 }
 
 /**

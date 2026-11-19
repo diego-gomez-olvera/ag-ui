@@ -81,6 +81,37 @@ class ToolExecutionManagerTest {
         assertEquals(0, handler.messages.size)
     }
 
+    @Test
+    fun toolResponsesMadeInTheSameMillisecondGetDistinctMessageIds() = runTest {
+        val registry = DefaultToolRegistry()
+        val handler = RecordingResponseHandler()
+        val manager = ToolExecutionManager(registry, handler)
+
+        registry.registerTool(
+            object : AbstractToolExecutor(
+                Tool(name = "echo", description = "Returns the provided text", parameters = JsonObject(emptyMap()))
+            ) {
+                override suspend fun executeInternal(context: ToolExecutionContext): ToolExecutionResult =
+                    ToolExecutionResult.success(message = "echo")
+            }
+        )
+
+        // Back-to-back runs finish well within a millisecond of each other
+        repeat(20) { round ->
+            manager.processEventStream(
+                events = flowOf(
+                    ToolCallStartEvent(toolCallId = "call-$round", toolCallName = "echo"),
+                    ToolCallEndEvent(toolCallId = "call-$round"),
+                    RunFinishedEvent(threadId = "thread-5", runId = "run-$round")
+                ),
+                threadId = "thread-5",
+                runId = "run-$round"
+            ).toList()
+        }
+
+        assertEquals(20, handler.messages.map { it.id }.toSet().size)
+    }
+
     private class RecordingResponseHandler : ToolResponseHandler {
         val messages = mutableListOf<ToolMessage>()
         override suspend fun sendToolResponse(toolMessage: ToolMessage, threadId: String?, runId: String?) {

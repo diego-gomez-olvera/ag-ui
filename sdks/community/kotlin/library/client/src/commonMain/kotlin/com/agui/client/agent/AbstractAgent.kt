@@ -6,7 +6,7 @@ import com.agui.client.state.defaultApplyEvents
 import com.agui.client.verify.verifyEvents
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import kotlinx.datetime.Clock
+import kotlin.uuid.Uuid
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import co.touchlab.kermit.Logger
@@ -501,7 +501,7 @@ abstract class AbstractAgent(
     }
 
     companion object {
-        private fun generateId(): String = "id_${Clock.System.now().toEpochMilliseconds()}"
+        private fun generateId(): String = "id_${Uuid.random()}"
     }
 }
 
