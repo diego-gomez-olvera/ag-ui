@@ -2,6 +2,10 @@ package com.agui.tools
 
 import com.agui.core.types.Tool
 import com.agui.core.types.ToolCall
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeout
 import co.touchlab.kermit.Logger
 
@@ -193,8 +197,19 @@ class DefaultToolRegistry : ToolRegistry {
         try {
             // Execute with timeout if specified
             result = executor.getMaxExecutionTimeMs()?.let { timeoutMs ->
-                withTimeout(timeoutMs) {
-                    executor.execute(context)
+                try {
+                    withTimeout(timeoutMs) {
+                        executor.execute(context)
+                    }
+                } catch (e: TimeoutCancellationException) {
+                    // Our own timeout fails the tool; if the caller was cancelled, propagate that instead
+                    currentCoroutineContext().ensureActive()
+                    throw ToolExecutionException(
+                        message = "Tool execution timed out after ${timeoutMs}ms",
+                        cause = e,
+                        toolName = toolName,
+                        toolCallId = context.toolCall.id
+                    )
                 }
             } ?: executor.execute(context)
             
@@ -220,6 +235,9 @@ class DefaultToolRegistry : ToolRegistry {
                 "Tool execution completed: $toolName (${if (result.success) "SUCCESS" else "FAILURE"}) in ${executionTime}ms" 
             }
             
+        } catch (e: CancellationException) {
+            // Cancellation is not a tool failure: no statistics, no wrapping
+            throw e
         } catch (e: Exception) {
             val endTime = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
             val executionTime = endTime - startTime
